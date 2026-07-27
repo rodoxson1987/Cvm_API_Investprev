@@ -3,6 +3,7 @@ using System;
 using CvmApi.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,96 +11,14 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CvmApi.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260727135951_AtualizaModeloCadastro")]
+    partial class AtualizaModeloCadastro
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
-
-            modelBuilder.Entity("CvmApi.Models.CompanhiaAberta", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Cnpj")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("cnpj_cia");
-
-                    b.Property<string>("CodigoCvm")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("codigo_cvm");
-
-                    b.Property<DateTime?>("DataRegistro")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("dt_reg");
-
-                    b.Property<string>("NomeComercial")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("denom_comercial");
-
-                    b.Property<string>("RazaoSocial")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("denom_social");
-
-                    b.Property<string>("SetorAtividade")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("setor_ativ");
-
-                    b.Property<string>("Situacao")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("sit");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("companhias_abertas");
-                });
-
-            modelBuilder.Entity("CvmApi.Models.DemonstracaoFinanceira", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Cnpj")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("cnpj_cia");
-
-                    b.Property<string>("CodigoConta")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("cd_conta");
-
-                    b.Property<DateTime>("DataReferencia")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("dt_refer");
-
-                    b.Property<string>("DescricaoConta")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("ds_conta");
-
-                    b.Property<string>("OrdemExercicio")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("ordem_exerc");
-
-                    b.Property<decimal>("ValorConta")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("vl_conta");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("demonstracoes_financeiras");
-                });
 
             modelBuilder.Entity("CvmApi.Models.FundoCadastro", b =>
                 {

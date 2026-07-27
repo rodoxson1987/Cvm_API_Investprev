@@ -1,109 +1,93 @@
-# 📈 CvmApi - API de Sincronização e Leitura de Informes Diários da CVM
+# 📊 CVM & B3 - API de Fundos de Investimento e Ações
 
-API REST desenvolvida em **.NET 10** para automatizar o download, processamento e armazenamento dos relatórios e dados diários de fundos de investimento fornecidos pela **CVM (Comissão de Valores Mobiliários)**.
-
-O projeto utiliza **SQLite** para persistência leve de dados sem necessidade de instalação de serviços externos, sendo totalmente portátil para ambientes corporativos com restrições de permissão.
+API RESTful desenvolvida em **.NET 8** e **SQLite** para sincronização automática dos dados abertos da **CVM** (Comissão de Valores Mobiliários) e consulta de cotações de ações da **B3** (via Yahoo Finance).
 
 ---
 
 ## 🛠️ Tecnologias Utilizadas
 
-* **.NET 10 (ASP.NET Core Web API):** Framework principal para construção de endpoints RESTful.
-* **Entity Framework Core (EF Core) 9.0+:** ORM para abstração e comunicação com o banco de dados.
-* **SQLite (`Microsoft.EntityFrameworkCore.Sqlite`):** Banco de dados relacional embutido em arquivo local (`.db`), eliminando a necessidade de servidores de banco.
-* **CsvHelper:** Biblioteca para parsing e leitura de dados em arquivos `.csv` e arquivos `.zip` descompactados em memória.
-* **Swashbuckle (Swagger):** Interface gráfica interativa para documentação e testes dos endpoints.
+* **.NET 8** (Minimal APIs)
+* **Entity Framework Core** (Com provedor SQLite)
+* **CsvHelper** (Parsing de arquivos CSV e extração de ZIPs da CVM)
+* **Swagger UI / OpenAPI** (Documentação e testes interativos)
 
 ---
 
-## 🏛️ Arquitetura e Decisões de Projeto
+## 🏗️ Estrutura do Projeto
 
-### 1. Modelo de Banco de Dados Local (Portabilidade)
-Para evitar a necessidade de privilégios de administrador para instalar bancos de dados como PostgreSQL ou SQL Server nas máquinas da equipe, optou-se pelo **SQLite**. 
-* Toda a base fica armazenada em um único arquivo local (`cvm_database.db`).
-* O arquivo de banco é mantido no `.gitignore` por boas práticas.
-* O comando `db.Database.Migrate()` executa na inicialização do sistema, garantindo a criação automática do banco e das tabelas na máquina de qualquer desenvolvedor ao clonar e rodar o projeto.
+```text
+CvmApi/
+├── Data/
+│   └── AppDbContext.cs           # Contexto do Banco de Dados
+├── Models/
+│   ├── FundoCadastro.cs          # Cadastro de Fundos (CVM)
+│   ├── InformeDiario.cs          # Cotas e Patrimônio dos Fundos
+│   ├── CompanhiaAberta.cs        # Cadastro de Ações/Empresas (CVM)
+│   └── DemonstracaoFinanceira.cs # Balanços e DREs
+├── Services/
+│   └── CvmSyncService.cs         # Lógica de Download, Parsing e Cotações
+├── Program.cs                    # Configuração e Endpoints da API
+└── README.md                     # Documentação do Projeto
 
-### 2. Suporte a Alterações no Schema da CVM
-A CVM atualizou recentemente a nomenclatura dos cabeçalhos em seus arquivos CSV (ex: de `CNPJ_FUNDO` para `CNPJ_FUNDO_CLASSE`). Mapeamos esses campos via `CsvHelper` aceitando múltiplos apelidos, garantindo retrocompatibilidade para dados antigos e suporte a dados novos.
 
----
+🚀 Como Executar o Projeto
+Pré-requisitos
+.NET 8 SDK instalado.
 
-## 🚀 Como Executar o Projeto na Sua Máquina
+1.Passo a Passo
 
-### Pré-requisitos
-* **SDK do .NET 10.0** (ou superior) instalado.
-* VS Code, Visual Studio ou qualquer editor de sua preferência.
+Clonar o repositório:
 
-### Passo a Passo
+git clone [https://github.com/SEU-USUARIO/CvmApi.git](https://github.com/SEU-USUARIO/CvmApi.git)
+cd CvmApi
 
-1. **Clonar o Repositório:**
-   ```bash
-   git clone [https://github.com/SEU_USUARIO/cvm-api-dotnet.git](https://github.com/SEU_USUARIO/cvm-api-dotnet.git)
-   cd cvm-api-dotnet
+2.Criar e aplicar as Migrations no Banco de Dados:
 
-2. **Restaurar Dependências e Executar a API: 
+dotnet ef migrations add Inicial
+dotnet ef database update
 
-Bash
+3.Executar a aplicação:
 
 dotnet run
 
-Nota: Na primeira execução, o .NET criará automaticamente o arquivo do banco de dados cvm_database.db e aplicará as migrations.
+4.Acessar a documentação (Swagger UI):
 
-3. Acessar a Interface de Testes (Swagger):
-
-Abra o navegador e acesse:
-
-http://localhost:5009/swagger
+Navegue até: http://localhost:5009/swagger
 
 
-## 📡 Endpoints Disponíveis
+📌 Endpoints da API
+1. Sincronização (POST)
+POST /api/cvm/sincronizar/{dataStr}
 
-1. Sincronização Diária da CVM
-Rota: POST /api/cvm/sincronizar/{data}
+Descrição: Baixa e processa os informes diários da CVM para a data informada.
 
-Parâmetro: data no formato AAAA-MM-DD (ex: 2024-01-15)
+Formatos aceitos: DD-MM-AAAA, DD/MM/AAAA ou AAAA-MM-DD.
 
-Descrição: 1. Conecta-se aos servidores da CVM e baixa o arquivo .zip mensal contendo o histórico.
-2. Extrai e lê o CSV em memória via streaming.
-3. Trata duplicidades e sanitiza os CNPJs.
-4. Salva no banco SQLite apenas os registros inéditos referente à data informada.
+POST /api/cvm/cadastros/sincronizar
 
-Exemplo de Resposta (200 OK):
+Descrição: Baixa o cadastro geral de todos os Fundos de Investimento (cad_fi.csv).
 
-JSON
-{
-  "mensagem": "Processado com sucesso!",
-  "registrosNovos": 24850
-}
+POST /api/cvm/acoes/sincronizar
 
-📁 Estrutura do Projeto
-
-'''
-
-CvmApi/
-├── Data/
-│   └── AppDbContext.cs       # Contexto do Entity Framework para SQLite
-├── Models/
-│   └── InformeDiario.cs      # Entidade que representa os dados da cota/patrimônio
-├── Services/
-│   └── CvmSyncService.cs     # Serviço de download, extração do ZIP e parsing do CSV
-├── Properties/
-│   └── launchSettings.json   # Configurações do servidor Kestrel (Portas)
-├── appsettings.json          # Connection String e configurações da aplicação
-├── Program.cs                # Injeção de dependências e inicialização do Kestrel/Migrations
-└── README.md                 # Documentação do repositório
-
-'''
-
-🔮 Próximos Passos (Roadmap)
+Descrição: Baixa o cadastro oficial de Companhias Abertas da CVM (cad_cia_aberta.csv).
 
 
-[ ] Endpoint GET /api/cvm/fundo/{cnpj}: Consulta do histórico de cotas e patrimônio de um fundo específico.
+2. Consultas (GET)
+GET /api/cvm/informes/recentes
 
-[ ] Worker de Automação: Agendamento diário automático para buscar e salvar novos informes da CVM sem interações manuais.
+Descrição: Retorna a contagem total e os N registros mais recentes importados no banco.
 
-[ ] Visualização de Dados: Implementação de visualizações e relatórios com os dados sincronizados.
+GET /api/cvm/fundo/{cnpj}
 
----
+Descrição: Retorna os dados cadastrais completos e a série histórica de cotas de um fundo pelo CNPJ.
 
+GET /api/cvm/empresa/{busca}
+
+Descrição: Busca companhias abertas por CNPJ, Código CVM ou Razão Social.
+
+GET /api/cvm/acao/cotacao/{termo}
+
+Descrição: Busca cotações diárias históricas de ações na B3 informando o Ticker (ex: PETR4, VALE3) ou o CNPJ da Empresa (ex: 33000167000101).
+
+📝 Licença
+Este projeto está licenciado sob a licença MIT. Sinta-se à vontade para utilizar, estudar e modificar!

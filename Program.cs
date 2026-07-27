@@ -1,260 +1,239 @@
 using Microsoft.EntityFrameworkCore;
 using CvmApi.Data;
 using CvmApi.Services;
-using System.Reflection;
+
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuração dos Serviços (EF Core + SQLite)
+// 1. Configuração do Banco de Dados SQLite
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") 
-    ?? "Data Source=cvm_database.db"));
+    options.UseSqlite("Data Source=cvm_data.db"));
 
-// Injeção do Serviço CvmSyncService com HttpClient
+// 2. Registro de Services HTTP
 builder.Services.AddHttpClient<CvmSyncService>();
 
+// Descomente a linha abaixo se você tiver a classe YahooFinanceService.cs criada
+// builder.Services.AddHttpClient<YahooFinanceService>();
+
+// 3. Suporte a Swagger / OpenAPI
+// 3. Suporte a Swagger / OpenAPI
 builder.Services.AddEndpointsApiExplorer();
-
-// Configuração do Swagger
-builder.Services.AddSwaggerGen(c =>
+builder.Services.AddSwaggerGen(options =>
 {
-    c.SwaggerDoc("v1", new() 
-    { 
-        Title = "📊 CVM - API de Fundos de Investimento", 
-        Version = "v1",
-        Description = "API para sincronização diária e consulta de cotas e patrimônio de Fundos de Investimento da CVM."
-    });
-
-    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    if (File.Exists(xmlPath))
+    options.SwaggerDoc("v1", new()
     {
-        c.IncludeXmlComments(xmlPath);
-    }
+        Title = "API CVM & B3 - Cotações e Fundos",
+        Version = "v1",
+        Description = "API para sincronização e consulta de Companhias Abertas (B3) e Fundos de Investimento (CVM)."
+    });
+});
+// 4. Suporte a CORS para consumo pelo Frontend
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
 });
 
 var app = builder.Build();
 
-// Executa as migrations automaticamente ao iniciar a aplicação
+// Garantir criação do banco SQLite na inicialização
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    db.Database.EnsureCreated();
 }
+
+app.UseCors("AllowAll");
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "CVM Fundos API v1");
-        c.DocumentTitle = "CVM Fundos - Swagger UI";
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "API CVM & B3 v1");
     });
 }
 
-#region --- ENDPOINTS DA CVM ---
+// ============================================================================
+// 📊 GRUPO 1: AÇÕES / COMPANHIAS ABERTAS (B3)
+// ============================================================================
 
-/// <summary>
-/// Consulta cotações históricas de uma ação listada na B3 pelo Ticker (ex: PETR4, VALE3, ITUB4).
-/// </summary>
-/// <summary>
-/// Consulta cotações históricas de uma ação listada na B3 por Ticker (ex: PETR4) ou por CNPJ da Empresa.
-/// </summary>
-app.MapGet("/api/cvm/acao/cotacao/{termo}", async (string termo, CvmSyncService syncService) =>
-{
-    var (ticker, cotacoes) = await syncService.ObterCotacoesAcaoAsync(termo);
-
-    if (!cotacoes.Any())
-    {
-        return Results.NotFound(new { mensagem = $"Não foram encontradas cotações para o termo/CNPJ: {termo}" });
-    }
-
-    return Results.Ok(new
-    {
-        termoPesquisado = termo,
-        tickerIdentificado = ticker,
-        totalRegistros = cotacoes.Count,
-        historicoPrecos = cotacoes
-    });
-})
-.WithTags("2. Consultas")
-.WithSummary("Busca cotações diárias por Ticker (ex: PETR4) ou por CNPJ")
-.WithDescription("Aceita tanto o código de negociação (PETR4, VALE3) quanto o CNPJ da Companhia Aberta.");
-
-/// <summary>
-/// Sincroniza a base de Companhias Abertas (Ações/Empresas) registradas na CVM.
-/// </summary>
 app.MapPost("/api/cvm/acoes/sincronizar", async (CvmSyncService syncService) =>
 {
-    var processados = await syncService.SincronizarCompanhiasAbertasAsync();
-    
-    return Results.Ok(new { 
-        mensagem = "Cadastro de Companhias Abertas (Ações) atualizado com sucesso!", 
-        totalEmpresasCadastradas = processados 
+    var total = await syncService.SincronizarCompanhiasAbertasAsync();
+    return Results.Ok(new 
+    { 
+        mensagem = "Companhias abertas sincronizadas com sucesso!", 
+        totalEmpresasCadastradas = total 
     });
 })
-.WithTags("1. Sincronização")
-.WithSummary("Baixa o cadastro de Companhias Abertas (cad_cia_aberta.csv)");
+.WithTags("1. Ações (B3)")
+.WithSummary("Sincroniza o cadastro de companhias abertas da CVM (cad_cia_aberta.csv)");
 
 
-/// <summary>
-/// Consulta os dados cadastrais de uma empresa/companhia aberta pelo CNPJ ou Código CVM.
-/// </summary>
-app.MapGet("/api/cvm/empresa/{busca}", async (string busca, AppDbContext db) =>
+app.MapGet("/api/cvm/acoes/listar", async (AppDbContext db, string? busca, string? situacao, int quantidade = 50) =>
 {
-    string termo = System.Net.WebUtility.UrlDecode(busca).Trim();
-    string termoDigitos = new string(termo.Where(char.IsDigit).ToArray());
+    var query = db.CompanhiasAbertas.AsQueryable();
 
-    var empresas = await db.CompanhiasAbertas
-        .Where(e => (termoDigitos.Length > 0 && e.Cnpj == termoDigitos.PadLeft(14, '0')) 
-                 || e.CodigoCvm == termo 
-                 || EF.Functions.Like(e.RazaoSocial, $"%{termo}%"))
-        .ToListAsync();
-
-    if (!empresas.Any())
+    // Filtro por termo (Razão Social, Nome Comercial ou CNPJ)
+    if (!string.IsNullOrWhiteSpace(busca))
     {
-        return Results.NotFound(new { mensagem = $"Nenhuma empresa encontrada para o termo: {termo}" });
+        string buscaLimpa = busca.Trim().ToLower();
+        query = query.Where(c => c.RazaoSocial.ToLower().Contains(buscaLimpa) 
+                              || (c.NomeComercial != null && c.NomeComercial.ToLower().Contains(buscaLimpa))
+                              || c.Cnpj.Contains(buscaLimpa));
     }
+
+    // Filtro por Situação CVM (ex: ATIVO, CANCELADA, etc.)
+    if (!string.IsNullOrWhiteSpace(situacao) && !situacao.Equals("TODAS", StringComparison.OrdinalIgnoreCase))
+    {
+        query = query.Where(c => c.Situacao.ToUpper() == situacao.ToUpper());
+    }
+
+    var totalNoBanco = await db.CompanhiasAbertas.CountAsync();
+
+    var empresas = await query
+        .OrderBy(c => c.RazaoSocial)
+        .Take(quantidade)
+        .Select(c => new
+        {
+            c.Id,
+            c.Cnpj,
+            c.RazaoSocial,
+            c.NomeComercial,
+            c.CodigoCvm,
+            c.Situacao
+        })
+        .ToListAsync();
 
     return Results.Ok(new
     {
-        totalEncontradas = empresas.Count,
+        totalNoBanco = totalNoBanco,
+        retornados = empresas.Count,
         empresas = empresas
     });
 })
-.WithTags("2. Consultas")
-.WithSummary("Busca empresa por CNPJ, Código CVM ou Razão Social");
+.WithTags("1. Ações (B3)")
+.WithSummary("Lista companhias abertas com todas as informações e filtros de busca");
+// Descomente este endpoint quando o YahooFinanceService estiver implementado
+/*
+app.MapGet("/api/cvm/acao/cotacao/{termo}", async (YahooFinanceService yahooService, string termo) =>
+{
+    var resultado = await yahooService.ObterCotacoesAsync(termo);
+    return resultado != null ? Results.Ok(resultado) : Results.NotFound("Nenhum dado encontrado para o Ticker/CNPJ informado.");
+})
+.WithTags("1. Ações (B3)")
+.WithSummary("Busca cotações e histórico de preços de uma ação na B3 (ex: PETR4)");
+*/
 
-/// <summary>
-/// Sincroniza a base de dados cadastrais de todos os fundos da CVM (Razão Social, Nome, Status e Administrador).
-/// </summary>
+
+// ============================================================================
+// 🏦 GRUPO 2: FUNDOS DE INVESTIMENTO (CVM)
+// ============================================================================
+
 app.MapPost("/api/cvm/cadastros/sincronizar", async (CvmSyncService syncService) =>
 {
-    var processados = await syncService.SincronizarCadastroFundosAsync();
-    
-    return Results.Ok(new { 
-        mensagem = "Cadastro de fundos atualizado com sucesso!", 
-        totalFundosCadastrados = processados 
+    var total = await syncService.SincronizarCadastroFundosAsync();
+    return Results.Ok(new 
+    { 
+        mensagem = "Cadastro geral de fundos sincronizado com sucesso!", 
+        totalFundosCadastrados = total 
     });
 })
-.WithTags("1. Sincronização")
-.WithSummary("Baixa o cadastro geral de fundos (cad_fi.csv)")
-.WithDescription("Obtém a Razão Social, Nome Fantasia, Status e Administrador de todos os fundos registrados na CVM.");
+.WithTags("2. Fundos de Investimento (CVM)")
+.WithSummary("Sincroniza a base geral cadastral de fundos da CVM (cad_fi.csv)");
 
-
-/// <summary>
-/// Sincroniza os informes diários da CVM para uma data específica.
-/// </summary>
-/// <param name="dataStr">Data no formato DD-MM-AAAA, DD/MM/AAAA ou AAAA-MM-DD</param>
-app.MapPost("/api/cvm/sincronizar/{dataStr}", async (string dataStr, CvmSyncService syncService) =>
+app.MapPost("/api/cvm/sincronizar/{dataStr}", async (CvmSyncService syncService, string dataStr) =>
 {
-    string[] formatosPermitidos = { "dd-MM-yyyy", "dd/MM/yyyy", "yyyy-MM-dd" };
+    // OBS: Se o seu método no CvmSyncService tiver outro nome (ex: SincronizarInformeDiarioPorDataAsync), 
+    // ajuste a chamada abaixo:
+    var total = await syncService.SincronizarInformeDiarioAsync(dataStr);
     
-    if (!DateTime.TryParseExact(dataStr, formatosPermitidos, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime dataConvertida))
+    return Results.Ok(new 
+    { 
+        mensagem = "Informe diário de cotas importado com sucesso!", 
+        dataSincronizada = dataStr, 
+        registrosNovos = total 
+    });
+})
+.WithTags("2. Fundos de Investimento (CVM)")
+.WithSummary("Importa o informe diário de cotas para uma data específica (Formato: DD-MM-YYYY)");
+
+app.MapGet("/api/cvm/fundos/listar", async (AppDbContext db, string? busca, string? situacao, int quantidade = 50) =>
+{
+    var query = db.FundosCadastro.AsQueryable();
+
+    // Filtro por texto (Razão Social ou CNPJ)
+    if (!string.IsNullOrWhiteSpace(busca))
     {
-        return Results.BadRequest(new { mensagem = "Formato de data inválido. Use DD-MM-AAAA ou AAAA-MM-DD." });
+        string buscaLimpa = busca.Trim().ToLower();
+        query = query.Where(f => f.RazaoSocial.ToLower().Contains(buscaLimpa) || f.CnpjFundo.Contains(buscaLimpa));
     }
 
-    var processados = await syncService.SincronizarDataDiariaAsync(dataConvertida);
-    
-    return Results.Ok(new { 
-        mensagem = "Processado com sucesso!", 
-        dataSincronizada = dataConvertida.ToString("dd/MM/yyyy"), 
-        registrosNovos = processados 
-    });
-})
-.WithTags("1. Sincronização")
-.WithSummary("Baixa e processa os dados da CVM em lote")
-.WithDescription("Faz o download do arquivo ZIP referente ao mês/ano informado, extrai o CSV e grava no SQLite os registros do dia digitado.");
+    // Filtro por Situação CVM
+    if (!string.IsNullOrWhiteSpace(situacao) && !situacao.Equals("TODAS", StringComparison.OrdinalIgnoreCase))
+    {
+        query = query.Where(f => f.Situacao.ToUpper() == situacao.ToUpper());
+    }
 
-
-/// <summary>
-/// Lista os registros importados mais recentes no banco de dados.
-/// </summary>
-/// <param name="quantidade">Quantidade de registros a retornar (padrão: 50)</param>
-app.MapGet("/api/cvm/informes/recentes", async (AppDbContext db, int quantidade = 50) =>
-{
-    var registros = await db.InformesDiarios
-        .OrderByDescending(f => f.DataCompetencia)
+    var fundos = await query
+        .OrderBy(f => f.RazaoSocial)
         .Take(quantidade)
         .Select(f => new
         {
             f.CnpjFundo,
-            f.TipoFundo,
-            data = f.DataCompetencia.ToString("dd/MM/yyyy"),
-            f.ValorCota,
-            f.PatrimonioLiquido,
-            f.ValorTotal
+            f.RazaoSocial,
+            f.NomeComercial,
+            f.Situacao,
+            f.Administrador
         })
         .ToListAsync();
 
     return Results.Ok(new
     {
-        totalNoBanco = await db.InformesDiarios.CountAsync(),
-        retornados = registros.Count,
-        dados = registros
+        totalNoBanco = await db.FundosCadastro.CountAsync(),
+        retornados = fundos.Count,
+        fundos = fundos
     });
 })
-.WithTags("2. Consultas")
-.WithSummary("Lista os últimos registros importados")
-.WithDescription("Retorna a contagem total de linhas no SQLite e os N registros mais recentes.");
+.WithTags("2. Fundos de Investimento (CVM)")
+.WithSummary("Lista fundos cadastrados no banco local com filtros por busca e situação");
 
-
-/// <summary>
-/// Consulta todas as ocorrências cadastrais e o histórico de cotas de um fundo específico.
-/// </summary>
-/// <param name="cnpj">CNPJ do fundo (com ou sem pontuação)</param>
-app.MapGet("/api/cvm/fundo/{*cnpj}", async (string cnpj, AppDbContext db) =>
+app.MapGet("/api/cvm/fundo/{cnpj}", async (AppDbContext db, string cnpj) =>
 {
-    string cnpjDecodificado = System.Net.WebUtility.UrlDecode(cnpj);
-    string cnpjLimpo = new string(cnpjDecodificado.Where(char.IsDigit).ToArray()).PadLeft(14, '0');
+    // Trata e limpa o CNPJ mantendo apenas os números
+    string cnpjLimpo = new string(cnpj.Where(char.IsDigit).ToArray()).PadLeft(14, '0');
 
-    // Traz TODAS as ocorrências cadastrais para o CNPJ pesquisado
     var cadastros = await db.FundosCadastro
         .Where(f => f.CnpjFundo == cnpjLimpo)
-        .Select(f => new
-        {
-            f.Id,
-            f.RazaoSocial,
-            f.NomeComercial,
-            f.Situacao,
-            f.DataInicioAtividade,
-            f.Administrador,
-            f.CnpjAdministrador
-        })
         .ToListAsync();
 
-    // Traz o histórico de cotas
-    var historico = await db.InformesDiarios
-        .Where(f => f.CnpjFundo == cnpjLimpo)
-        .OrderByDescending(f => f.DataCompetencia)
-        .Select(f => new
+    // OBS: Se na sua classe InformeDiario o campo de data se chamar 'Data' em vez de 'DataInforme',
+    // altere abaixo 'i.DataInforme' para 'i.Data':
+    var cotas = await db.InformesDiarios
+        .Where(i => i.CnpjFundo == cnpjLimpo)
+        .OrderByDescending(i => i.DataInforme) 
+        .Select(i => new
         {
-            data = f.DataCompetencia.ToString("dd/MM/yyyy"),
-            valorCota = f.ValorCota,
-            patrimonioLiquido = f.PatrimonioLiquido,
-            valorTotal = f.ValorTotal
+            Data = i.DataInforme.ToString("dd/MM/yyyy"),
+            ValorCota = i.ValorCota,
+            PatrimonioLiquido = i.PatrimonioLiquido
         })
         .ToListAsync();
-
-    if (!cadastros.Any() && !historico.Any())
-    {
-        return Results.NotFound(new { mensagem = $"Nenhum dado cadastral ou cota encontrada para o CNPJ: {cnpjLimpo}" });
-    }
 
     return Results.Ok(new
     {
         cnpj = cnpjLimpo,
-        totalOcorrenciasCadastrais = cadastros.Count,
         cadastros = cadastros,
-        totalCotasRegistradas = historico.Count,
-        historicoCotas = historico
+        historicoCotas = cotas
     });
 })
-.WithTags("2. Consultas")
-.WithSummary("Busca detalhes, Razão Social e histórico pelo CNPJ")
-.WithDescription("Retorna a lista cadastral completa combinada com a série histórica de cotas.");
-
-#endregion
+.WithTags("2. Fundos de Investimento (CVM)")
+.WithSummary("Retorna os detalhes cadastrais e o histórico de cotas de um fundo pelo CNPJ");
 
 app.Run();

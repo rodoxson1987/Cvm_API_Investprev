@@ -1,32 +1,14 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.EntityFrameworkCore;
-
-namespace CvmApi.Models;
-
-[Table("informes_diarios")]
-[Index(nameof(CnpjFundo), nameof(DataCompetencia), IsUnique = true)]
-public class InformeDiario
+namespace CvmApi.Models
 {
-    [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public long Id { get; set; }
-
-    [Column("tp_fundo")]
-    public string TipoFundo { get; set; } = string.Empty;
-
-    [Column("cnpj_fundo")]
-    public string CnpjFundo { get; set; } = string.Empty;
-
-    [Column("dt_comptc")]
-    public DateTime DataCompetencia { get; set; }
-
-    [Column("vl_total")]
-    public decimal ValorTotal { get; set; }
-
-    [Column("vl_quota")]
-    public decimal ValorCota { get; set; }
-
-    [Column("vl_patrim_liq")]
-    public decimal PatrimonioLiquido { get; set; }
+    public class InformeDiario
+    {
+        public int Id { get; set; }
+        public string CnpjFundo { get; set; } = string.Empty;
+        public DateTime DataInforme { get; set; }
+        public decimal ValorCota { get; set; }
+        public decimal PatrimonioLiquido { get; set; }
+        public decimal CapatacaoDia { get; set; }
+        public decimal ResgateDia { get; set; }
+        public int NumeroCotistas { get; set; }
+    }
 }

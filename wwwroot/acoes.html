@@ -1,0 +1,174 @@
+<!-- <!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CVM & B3 - Companhias Abertas (Ações)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans pb-10">
+
+    <header class="bg-slate-800 border-b border-slate-700 p-4 shadow-lg">
+        <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <h1 class="text-xl font-bold text-emerald-400 flex items-center gap-2">
+                📈 B3 <span class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">Companhias Abertas</span>
+            </h1>
+            
+            <nav class="flex bg-slate-900 p-1 rounded-lg border border-slate-700">
+                <a href="acoes.html" class="px-4 py-1.5 text-sm font-medium rounded-md bg-emerald-600 text-white">📊 Ações (B3)</a>
+                <a href="fundos.html" class="px-4 py-1.5 text-sm font-medium rounded-md text-slate-400 hover:text-slate-200">🏦 Fundos (CVM)</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto p-4 space-y-6">
+
+        <section class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h2 class="text-lg font-semibold text-slate-200 mb-2">🔄 Base de Companhias Abertas</h2>
+            <p class="text-sm text-slate-400 mb-4">Atualize o cadastro de empresas listadas na CVM/B3 (`cad_cia_aberta.csv`).</p>
+            
+            <div class="flex items-center gap-4">
+                <button type="button" id="btnSyncAcoes" onclick="sincronizarCompanhiasAbertas()" 
+                        class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium py-2 px-6 rounded-md transition-colors">
+                    Sincronizar Cadastros de Ações
+                </button>
+            </div>
+            <div id="syncStatus" class="mt-4 text-sm hidden p-3 rounded-lg"></div>
+        </section>
+
+        <section class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h2 class="text-lg font-semibold text-slate-200 mb-2">Consulta de Preços de Ações</h2>
+            <p class="text-sm text-slate-400 mb-4">Digite o <strong>Ticker</strong> (ex: <code class="text-emerald-400">PETR4</code>) ou o <strong>CNPJ</strong> da empresa.</p>
+            
+            <div class="flex gap-2">
+                <input type="text" id="inputAcao" placeholder="Ex: PETR4 ou 33000167000101" 
+                       class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+                <button type="button" onclick="buscarAcao()" 
+                        class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-6 py-2 rounded-lg transition-colors shadow">
+                    Buscar
+                </button>
+            </div>
+            <p id="erroAcao" class="text-red-400 text-sm mt-2 hidden"></p>
+        </section>
+
+        <section id="cardInfoAcao" class="hidden bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-md flex justify-between items-center">
+            <div>
+                <span class="text-xs uppercase tracking-wider text-slate-400">Ativo</span>
+                <h3 id="infoTicker" class="text-2xl font-bold text-emerald-400">-</h3>
+                <p id="infoSubAcao" class="text-sm text-slate-300">-</p>
+            </div>
+            <div class="text-right">
+                <span class="text-xs uppercase tracking-wider text-slate-400">Último Fechamento</span>
+                <p id="infoPrecoAcao" class="text-3xl font-bold text-slate-100">R$ 0,00</p>
+            </div>
+        </section>
+
+        <section id="chartSectionAcao" class="hidden bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h3 class="text-lg font-semibold text-slate-200 mb-4">Histórico de Preços (Último Ano)</h3>
+            <div class="w-full h-80">
+                <canvas id="stockChart"></canvas>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        const API_URL = "http://localhost:5009/api/cvm";
+        let chartInstance = null;
+
+        function exibirStatusSync(mensagem, isSucesso) {
+            const statusDiv = document.getElementById('syncStatus');
+            statusDiv.classList.remove('hidden', 'bg-emerald-950', 'text-emerald-400', 'bg-red-950', 'text-red-400', 'border-emerald-800', 'border-red-800');
+            statusDiv.classList.add('border', isSucesso ? 'bg-emerald-950' : 'bg-red-950', isSucesso ? 'text-emerald-400' : 'text-red-400', isSucesso ? 'border-emerald-800' : 'border-red-800');
+            statusDiv.innerText = mensagem;
+        }
+
+        async function sincronizarCompanhiasAbertas() {
+            const btn = document.getElementById('btnSyncAcoes');
+            btn.disabled = true;
+            btn.innerText = "Sincronizando...";
+            exibirStatusSync("Baixando cadastros de Companhias Abertas da CVM...", true);
+
+            try {
+                const response = await fetch(`${API_URL}/acoes/sincronizar`, { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) exibirStatusSync(`✅ ${data.mensagem} Total: ${data.totalEmpresasCadastradas} empresas.`, true);
+                else throw new Error(data.mensagem || "Erro ao sincronizar empresas.");
+            } catch (err) {
+                exibirStatusSync(`❌ Erro: ${err.message}`, false);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Sincronizar Cadastros de Ações";
+            }
+        }
+
+        async function buscarAcao() {
+            const termo = document.getElementById('inputAcao').value.trim();
+            const errorElement = document.getElementById('erroAcao');
+            errorElement.classList.add('hidden');
+
+            if (!termo) {
+                errorElement.innerText = "Por favor, digite um Ticker ou CNPJ.";
+                errorElement.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/acao/cotacao/${encodeURIComponent(termo)}`);
+                if (!response.ok) throw new Error("Nenhum dado encontrado para este Ticker/CNPJ.");
+
+                const data = await response.json();
+                renderizarAcao(data);
+            } catch (err) {
+                errorElement.innerText = err.message;
+                errorElement.classList.remove('hidden');
+            }
+        }
+
+        function renderizarAcao(data) {
+            document.getElementById('cardInfoAcao').classList.remove('hidden');
+            document.getElementById('chartSectionAcao').classList.remove('hidden');
+
+            const historico = data.historicoPrecos;
+            const ultimoRegistro = historico[historico.length - 1];
+
+            document.getElementById('infoTicker').innerText = data.tickerIdentificado;
+            document.getElementById('infoSubAcao').innerText = `Pesquisado: ${data.termoPesquisado} | Total Registros: ${data.totalRegistros}`;
+            document.getElementById('infoPrecoAcao').innerText = `R$ ${ultimoRegistro.fechamento.toFixed(2)}`;
+
+            const labels = historico.map(h => h.data);
+            const precos = historico.map(h => h.fechamento);
+            const ctx = document.getElementById('stockChart').getContext('2d');
+
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: `Fechamento (R$) - ${data.tickerIdentificado}`,
+                        data: precos,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 0,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#cbd5e1' } } },
+                    scales: {
+                        x: { ticks: { color: '#64748b' }, grid: { color: '#334155' } },
+                        y: { ticks: { color: '#64748b' }, grid: { color: '#334155' } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html> -->

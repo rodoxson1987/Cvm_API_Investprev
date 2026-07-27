@@ -1,0 +1,340 @@
+<!-- <!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CVM & B3 - Fundos de Investimento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans pb-10">
+
+    <header class="bg-slate-800 border-b border-slate-700 p-4 shadow-lg">
+        <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <h1 class="text-xl font-bold text-emerald-400 flex items-center gap-2">
+                🏦 CVM <span class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">Fundos de Investimento</span>
+            </h1>
+            
+            <nav class="flex bg-slate-900 p-1 rounded-lg border border-slate-700">
+                <a href="acoes.html" class="px-4 py-1.5 text-sm font-medium rounded-md text-slate-400 hover:text-slate-200">📊 Ações (B3)</a>
+                <a href="fundos.html" class="px-4 py-1.5 text-sm font-medium rounded-md bg-emerald-600 text-white">🏦 Fundos (CVM)</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto p-4 space-y-6">
+
+        <section class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h2 class="text-lg font-semibold text-slate-200 mb-2">🔄 Sincronização de Fundos (CVM)</h2>
+            <p class="text-sm text-slate-400 mb-4">Gerencie as bases cadastrais e os informes de cotas diárias enviados à CVM.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 flex flex-col justify-between">
+                    <div>
+                        <h3 class="font-semibold text-slate-200 text-sm">Cadastro Geral de Fundos</h3>
+                        <p class="text-xs text-slate-500 mt-1">Baixa o arquivo cad_fi.csv com todas as situações.</p>
+                    </div>
+                    <button type="button" id="btnSyncFundos" onclick="sincronizarCadastroFundos()" 
+                            class="mt-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium py-2 px-4 rounded-md transition-colors w-full">
+                        Sincronizar Cadastro
+                    </button>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 flex flex-col justify-between">
+                    <div>
+                        <h3 class="font-semibold text-slate-200 text-sm">Informe Diário de Cotas</h3>
+                        <p class="text-xs text-slate-500 mt-1">Importa as cotas de todos os fundos para um dia específico.</p>
+                        <input type="date" id="inputDataSync" class="mt-2 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200">
+                    </div>
+                    <button type="button" id="btnSyncDiario" onclick="sincronizarCotasDiarias()" 
+                            class="mt-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium py-2 px-4 rounded-md transition-colors w-full">
+                        Importar Informes da Data
+                    </button>
+                </div>
+            </div>
+
+            <div id="syncStatus" class="mt-4 text-sm hidden p-3 rounded-lg"></div>
+        </section>
+
+        <section class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h2 class="text-lg font-semibold text-slate-200 mb-2">Consulta por CNPJ do Fundo</h2>
+            <p class="text-sm text-slate-400 mb-4">Digite o CNPJ para visualizar a Razão Social, Administrador e as cotas salvas.</p>
+            
+            <div class="flex gap-2">
+                <input type="text" id="inputFundo" placeholder="Digite o CNPJ..." 
+                       class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+                <button type="button" onclick="buscarFundo()" 
+                        class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-6 py-2 rounded-lg transition-colors shadow">
+                    Buscar
+                </button>
+            </div>
+            <p id="erroFundo" class="text-red-400 text-sm mt-2 hidden"></p>
+        </section>
+
+        <section id="cardInfoFundo" class="hidden bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-md space-y-4">
+            <div class="border-b border-slate-700 pb-4">
+                <span class="text-xs uppercase tracking-wider text-slate-400">Razão Social</span>
+                <h3 id="fundoRazaoSocial" class="text-xl font-bold text-emerald-400">-</h3>
+                <p id="fundoNomeFantasia" class="text-sm text-slate-300">-</p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                <div><span class="text-slate-400 block text-xs uppercase">CNPJ</span><span id="fundoCnpj" class="font-semibold text-slate-200">-</span></div>
+                <div><span class="text-slate-400 block text-xs uppercase">Situação</span><span id="fundoSituacao" class="font-semibold text-slate-200">-</span></div>
+                <div><span class="text-slate-400 block text-xs uppercase">Administrador</span><span id="fundoAdmin" class="font-semibold text-slate-200">-</span></div>
+            </div>
+        </section>
+
+        <section id="tabelaCotasSection" class="hidden bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h3 class="text-lg font-semibold text-slate-200 mb-4">Histórico de Cotas Importadas</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-slate-300">
+                    <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
+                        <tr>
+                            <th class="p-3">Data</th>
+                            <th class="p-3">Valor da Cota (R$)</th>
+                            <th class="p-3">Patrimônio Líquido (R$)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaCotasCorpo" class="divide-y divide-slate-700"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-md space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-200">Fundos Baixados na Base Local</h3>
+                    <p class="text-xs text-slate-400">Total gravado no banco: <span id="totalFundosBanco" class="font-bold text-emerald-400">0</span></p>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                    <input type="text" id="inputFiltroFundos" placeholder="Filtrar nome ou CNPJ..." 
+                           class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500">
+
+                    <select id="selectSituacaoFundo" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500">
+                        <option value="TODAS">Todas as Situações</option>
+                        <option value="EM FUNCIONAMENTO NORMAL" selected>Em Funcionamento Normal</option>
+                        <option value="CANCELADA">Cancelada</option>
+                        <option value="FASE PRÉ-OPERACIONAL">Fase Pré-Operacional</option>
+                        <option value="EM LIQUIDAÇÃO">Em Liquidação</option>
+                        <option value="PARALISADO">Paralisado</option>
+                        <option value="SUSPENSO">Suspenso</option>
+                    </select>
+
+                    <button type="button" onclick="carregarFundosBaixados()" 
+                            class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-4 py-1.5 rounded-lg transition-colors">
+                        Filtrar
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-slate-300">
+                    <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
+                        <tr>
+                            <th class="p-3">CNPJ</th>
+                            <th class="p-3">Razão Social</th>
+                            <th class="p-3">Situação</th>
+                            <th class="p-3">Administrador</th>
+                            <th class="p-3 text-center">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaFundosBaixadosCorpo" class="divide-y divide-slate-700">
+                        <tr>
+                            <td colspan="5" class="p-4 text-center text-slate-500">Clique em "Filtrar" para listar os fundos gravados no banco.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        const API_URL = "http://localhost:5009/api/cvm";
+
+        function exibirStatusSync(mensagem, isSucesso) {
+            const statusDiv = document.getElementById('syncStatus');
+            statusDiv.classList.remove('hidden', 'bg-emerald-950', 'text-emerald-400', 'bg-red-950', 'text-red-400', 'border-emerald-800', 'border-red-800');
+            statusDiv.classList.add('border', isSucesso ? 'bg-emerald-950' : 'bg-red-950', isSucesso ? 'text-emerald-400' : 'text-red-400', isSucesso ? 'border-emerald-800' : 'border-red-800');
+            statusDiv.innerText = mensagem;
+        }
+
+        async function sincronizarCadastroFundos() {
+            const btn = document.getElementById('btnSyncFundos');
+            btn.disabled = true;
+            btn.innerText = "Sincronizando...";
+            exibirStatusSync("Baixando e processando cadastros da CVM... Aguarde.", true);
+
+            try {
+                const response = await fetch(`${API_URL}/cadastros/sincronizar`, { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    exibirStatusSync(`✅ ${data.mensagem} Total: ${data.totalFundosCadastrados} fundos.`, true);
+                    carregarFundosBaixados();
+                } else throw new Error(data.mensagem || "Erro ao sincronizar fundos.");
+            } catch (err) {
+                exibirStatusSync(`❌ Erro: ${err.message}`, false);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Sincronizar Cadastro";
+            }
+        }
+
+        async function sincronizarCotasDiarias() {
+            const inputData = document.getElementById('inputDataSync').value;
+            const btn = document.getElementById('btnSyncDiario');
+
+            if (!inputData) {
+                exibirStatusSync("⚠️ Por favor, selecione uma data para sincronizar.", false);
+                return;
+            }
+
+            const [ano, mes, dia] = inputData.split('-');
+            const dataFormatada = `${dia}-${mes}-${ano}`;
+
+            btn.disabled = true;
+            btn.innerText = "Processando...";
+            exibirStatusSync(`Baixando informes da CVM para o dia ${dataFormatada}...`, true);
+
+            try {
+                const response = await fetch(`${API_URL}/sincronizar/${dataFormatada}`, { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) exibirStatusSync(`✅ ${data.mensagem} Data: ${data.dataSincronizada} | Registros importados: ${data.registrosNovos}`, true);
+                else throw new Error(data.mensagem || "Erro ao sincronizar informes.");
+            } catch (err) {
+                exibirStatusSync(`❌ Erro: ${err.message}`, false);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Importar Informes da Data";
+            }
+        }
+
+        async function buscarFundo() {
+            const cnpj = document.getElementById('inputFundo').value.trim();
+            const errorElement = document.getElementById('erroFundo');
+            errorElement.classList.add('hidden');
+
+            if (!cnpj) {
+                errorElement.innerText = "Por favor, digite o CNPJ do fundo.";
+                errorElement.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/fundo/${encodeURIComponent(cnpj)}`);
+                if (!response.ok) throw new Error("Fundo não encontrado no banco local.");
+
+                const data = await response.json();
+                renderizarFundo(data);
+            } catch (err) {
+                errorElement.innerText = err.message;
+                errorElement.classList.remove('hidden');
+            }
+        }
+
+        function renderizarFundo(data) {
+    document.getElementById('cardInfoFundo').classList.remove('hidden');
+    document.getElementById('tabelaCotasSection').classList.remove('hidden');
+
+    const cadastro = data.cadastros && data.cadastros.length > 0 ? data.cadastros[0] : null;
+
+    document.getElementById('fundoCnpj').innerText = data.cnpj || '-';
+    document.getElementById('fundoRazaoSocial').innerText = cadastro ? (cadastro.razaoSocial || cadastro.RazaoSocial) : 'Razão Social não cadastrada';
+    document.getElementById('fundoNomeFantasia').innerText = cadastro && (cadastro.nomeComercial || cadastro.NomeComercial) ? `Nome Fantasia: ${cadastro.nomeComercial || cadastro.NomeComercial}` : '';
+    document.getElementById('fundoSituacao').innerText = cadastro ? (cadastro.situacao || cadastro.Situacao) : '-';
+    document.getElementById('fundoAdmin').innerText = cadastro ? (cadastro.administrador || cadastro.Administrador || 'Não informado') : '-';
+
+    const tbody = document.getElementById('tabelaCotasCorpo');
+    tbody.innerHTML = '';
+
+    // Aceita tanto historicoCotas quanto HistoricoCotas
+    const cotas = data.historicoCotas || data.HistoricoCotas || [];
+
+    if (!cotas || cotas.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-slate-500">Nenhum histórico de cotas importado para este CNPJ. Selecione uma data e clique em "Importar Informes da Data".</td></tr>`;
+        return;
+    }
+
+    cotas.forEach(item => {
+        // Mapeia flexivelmente as propriedades para evitar problemas com casing
+        const dataStr = item.data || item.Data || item.dataInforme || item.DataInforme || '-';
+        const valorCota = item.valorCota ?? item.ValorCota ?? 0;
+        const patrimonio = item.patrimonioLiquido ?? item.PatrimonioLiquido ?? 0;
+
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-700/50 transition-colors';
+        tr.innerHTML = `
+            <td class="p-3 font-mono text-slate-200">${dataStr}</td>
+            <td class="p-3 font-semibold text-emerald-400">R$ ${Number(valorCota).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 6 })}</td>
+            <td class="p-3 text-slate-300">R$ ${Number(patrimonio).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+        async function carregarFundosBaixados() {
+            const filtro = document.getElementById('inputFiltroFundos').value.trim();
+            const situacao = document.getElementById('selectSituacaoFundo').value;
+            const tbody = document.getElementById('tabelaFundosBaixadosCorpo');
+            
+            tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">Carregando fundos...</td></tr>`;
+
+            try {
+                const url = `${API_URL}/fundos/listar?busca=${encodeURIComponent(filtro)}&situacao=${encodeURIComponent(situacao)}&quantidade=50`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error("Erro ao carregar lista de fundos.");
+
+                const data = await response.json();
+                document.getElementById('totalFundosBanco').innerText = data.totalNoBanco;
+
+                tbody.innerHTML = '';
+
+                if (!data.fundos || data.fundos.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">Nenhum fundo encontrado para este filtro.</td></tr>`;
+                    return;
+                }
+
+                data.fundos.forEach(fundo => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-slate-700/50 transition-colors';
+                    tr.innerHTML = `
+                        <td class="p-3 font-mono text-emerald-400">${fundo.cnpjFundo}</td>
+                        <td class="p-3 font-medium text-slate-200">${fundo.razaoSocial}</td>
+                        <td class="p-3">
+                            <span class="px-2 py-0.5 text-xs rounded border ${obterBadgeColor(fundo.situacao)}">
+                                ${fundo.situacao}
+                            </span>
+                        </td>
+                        <td class="p-3 text-slate-400 text-xs">${fundo.administrador || 'Não informado'}</td>
+                        <td class="p-3 text-center">
+                            <button type="button" onclick="selecionarFundoEBuscar('${fundo.cnpjFundo}')" 
+                                    class="bg-emerald-600/20 text-emerald-400 border border-emerald-800 hover:bg-emerald-600 hover:text-white text-xs px-2.5 py-1 rounded transition-colors">
+                                Ver Cotas
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-400">❌ ${err.message}</td></tr>`;
+            }
+        }
+
+        function obterBadgeColor(situacao) {
+            switch ((situacao || '').toUpperCase()) {
+                case 'EM FUNCIONAMENTO NORMAL': return 'bg-emerald-950 text-emerald-400 border-emerald-800';
+                case 'CANCELADA': return 'bg-red-950 text-red-400 border-red-800';
+                case 'EM LIQUIDAÇÃO': return 'bg-amber-950 text-amber-400 border-amber-800';
+                default: return 'bg-slate-900 text-slate-400 border-slate-700';
+            }
+        }
+
+        function selecionarFundoEBuscar(cnpj) {
+            document.getElementById('inputFundo').value = cnpj;
+            buscarFundo();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html> -->
